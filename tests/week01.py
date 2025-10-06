@@ -2,7 +2,6 @@
 
 import numpy as np
 
-import sys
 def evaluate_general_sum(
     row_matrix: np.ndarray,
     col_matrix: np.ndarray,
@@ -27,13 +26,12 @@ def evaluate_general_sum(
     np.ndarray
         A vector of expected utilities of the players
     """
-    exp_utils = np.array(2)
     # first player is row, second is col
-    first_player = np.sum(np.sum((row_strategy[:,np.newaxis]*row_matrix),axis=0)*col_strategy[np.newaxis,:])
-    second_player = np.sum(np.sum(col_strategy[np.newaxis,:]*col_matrix,axis=1)*row_strategy[:,np.newaxis])
+    first_player = row_strategy @ row_matrix @ col_strategy
+    second_player = row_strategy @ col_matrix @ col_strategy
+    exp_utils = np.array([first_player, second_player])
     
     return exp_utils
-    raise NotImplementedError
 
 
 def evaluate_zero_sum(
@@ -55,8 +53,10 @@ def evaluate_zero_sum(
     np.ndarray
         A vector of expected utilities of the players
     """
-
-    raise NotImplementedError
+    first_player = row_strategy @ row_matrix @ col_strategy
+    second_player = -first_player
+    exp_utils = np.array([first_player, second_player])
+    return exp_utils
 
 
 def calculate_best_response_against_row(
@@ -76,8 +76,9 @@ def calculate_best_response_against_row(
     np.ndarray
         The column player's best response
     """
-
-    raise NotImplementedError
+    best_response = row_strategy @ col_matrix
+    best_response = np.argmax(best_response)
+    raise np.array(best_response)
 
 
 def calculate_best_response_against_col(
@@ -97,8 +98,9 @@ def calculate_best_response_against_col(
     np.ndarray
         The row player's best response
     """
-
-    raise NotImplementedError
+    best_response = row_matrix @ col_strategy
+    best_response = np.argmax(best_response)
+    return np.array(best_response)
 
 
 def evaluate_row_against_best_response(
@@ -120,6 +122,7 @@ def evaluate_row_against_best_response(
     np.float32
         The expected utility of the row player
     """
+    best_response = calculate_best_response_against_row(col_matrix, row_strategy)
 
     raise NotImplementedError
 
