@@ -179,3 +179,6 @@ def test_iterated_removal_of_dominated_strategies(
         },
         f'{request.node.originalname}{request.node.callspec.indices["dominance_data_stream"]}',
     )
+
+
+retcode = pytest.main([__file__, "-v"])

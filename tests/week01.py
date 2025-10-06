@@ -28,8 +28,10 @@ def evaluate_general_sum(
         A vector of expected utilities of the players
     """
     exp_utils = np.array(2)
-    exp_utils[0] = row_matrix*row_strategy
-    exp_utils[1] = col_matrix*col_strategy
+    # first player is row, second is col
+    first_player = np.sum(np.sum((row_strategy[:,np.newaxis]*row_matrix),axis=0)*col_strategy[np.newaxis,:])
+    second_player = np.sum(np.sum(col_strategy[np.newaxis,:]*col_matrix,axis=1)*row_strategy[:,np.newaxis])
+    
     return exp_utils
     raise NotImplementedError
 
