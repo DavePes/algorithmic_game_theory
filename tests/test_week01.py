@@ -182,4 +182,4 @@ def test_iterated_removal_of_dominated_strategies(
 
 
 #retcode = pytest.main([__file__, "-k calculate_best_response_against_row"])
-retcode = pytest.main([__file__, "-v"])
+#retcode = pytest.main([__file__, "-v"])
