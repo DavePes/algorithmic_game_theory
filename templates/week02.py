@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 import numpy as np
-
+import matplotlib.pyplot as plt
+from scipy.optimize import linprog
 
 def plot_best_response_value_function(row_matrix: np.ndarray, step_size: float) -> None:
     """Plot the best response value function for the row player in a 2xN zero-sum game.
@@ -13,8 +14,25 @@ def plot_best_response_value_function(row_matrix: np.ndarray, step_size: float) 
     step_size : float
         The step size for the probability of the first action of the row player
     """
+    row_utilities = []
+    row_strategies = []
+    row_strategy = np.array([0.0, 1.0])
+    while row_strategy[0] <= 1.0:
+        best_response = np.min(row_strategy @ row_matrix) ## col_player is minimizing
+        row_utilities.append(best_response)
+        row_strategies.append(row_strategy[0])
+        row_strategy[0] += step_size
+        row_strategy[1] -= step_size
 
-    raise NotImplementedError
+    # Plot the best response value function
+    row_strategies = np.array(row_strategies)
+    row_utilities = np.array(row_utilities)
+    plt.plot(row_strategies, row_utilities)
+    plt.xlabel('Row Strategy')
+    plt.ylabel('Best Response Utility')
+    plt.title('Best Response Value Function')
+    plt.grid()
+    plt.show()
 
 
 def verify_support(
@@ -41,7 +59,16 @@ def verify_support(
     np.ndarray | None
         The opponent's strategy, if it exists, otherwise `None`
     """
-
+    num_row_support = len(row_support)
+    num_col_support = len(col_support)
+    submatrix = matrix[np.ix_(row_support, col_support)]
+    c = np.zeros((num_col_support + 1,))
+    c[-1] = 1.0
+    added_vector = np.ones((num_row_support + 1, 1))
+    sum_to_one = np.ones(num_col_support)
+    sub_with_bottom = np.vstack((submatrix, sum_to_one))
+    final_matrix = np.hstack((sub_with_bottom, added_vector))
+    np.linalg.solve(final_matrix, c)
     raise NotImplementedError
 
 
@@ -72,3 +99,16 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
+
+
+p1_matrix = np.array([
+    [0., 0., -10.],
+    [1., -10., -10.],
+    [-10., -10., -10.]
+])
+row_support_fail = np.array([0, 2])
+col_support_fail = np.array([0, 1])
+
+# --- Call your function ---
+# We use the ROW player's matrix to find the COLUMN player's strategy
+result = verify_support(p1_matrix, row_support_fail, col_support_fail)

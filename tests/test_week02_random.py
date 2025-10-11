@@ -73,3 +73,5 @@ def test_support_enumeration_zero_sum(
         {f'{i}': np.concatenate(x) for i, x in enumerate(equilibria)},
         f'{request.node.originalname}{request.node.callspec.indices["zero_sum_data_stream"]}',
     )
+#retcode = pytest.main([__file__, "-k calculate_best_response_against_row"])
+retcode = pytest.main([__file__, "-v"])
