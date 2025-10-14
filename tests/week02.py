@@ -71,7 +71,7 @@ def verify_support(
     A_eq[:num_row_support,-1] = -1.0
     A_eq[-1,:num_col_support] = 1.0
     c = np.zeros(num_col_support + 1)
-    epsilon = 1e-25
+    epsilon = 1e-9
     bounds = [(epsilon, None)] * num_col_support + [(None, None)]
     result = linprog(c=c,A_eq = A_eq,b_eq = b_eq,bounds = bounds,method='highs')
     if result.success:
@@ -104,7 +104,7 @@ def support_enumeration(
 
         player_row_payoff = row_strategy @ row_payoff  
         player_col_payoff = col_payoff @ col_strategy
-        if (np.max(row_payoff) > player_row_payoff + 1e-14) or (np.max(col_payoff) > player_col_payoff + 1e-14):
+        if (np.max(row_payoff) > player_row_payoff + 1e-8) or (np.max(col_payoff) > player_col_payoff + 1e-8):
             return False
         return True
     equilibria = []
@@ -126,7 +126,7 @@ def support_enumeration(
 
                 if is_nash_equilibrium(row_strategy, col_strategy, row_matrix, col_matrix):
                     equilibria.append((row_strategy, col_strategy))
-
+    print(len(equilibria))
     return equilibria
 def main() -> None:
     pass
