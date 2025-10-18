@@ -121,3 +121,4 @@ def test_fictitious_play_naive(
         {'final_exploitability': final_exploitability},
         f'{request.node.originalname}{request.node.callspec.indices["zero_sum_data_stream"]}',
     )
+#pytest.main([__file__,])

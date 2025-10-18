@@ -61,7 +61,7 @@ def compute_nash_conv(
         The NashConv value of the given strategy profile
     """
     deltas = compute_deltas(row_matrix, col_matrix, row_strategy, col_strategy)
-    return np.sum(np.maximum(deltas))
+    return np.sum(deltas)
 
 
 def compute_exploitability(
@@ -115,26 +115,38 @@ def fictitious_play(
     list[tuple[np.ndarray, np.ndarray]]
         The sequence of average strategy profiles produced by the algorithm
     """
-    avg_row_strategy = np.ones(row_matrix.shape[0])/row_matrix.shape[0]
-    avg_col_strategy = np.ones(col_matrix.shape[1])/col_matrix.shape[1]
-    last_row_strategy = avg_row_strategy
-    last_col_strategy = avg_col_strategy
+    m, n = row_matrix.shape
+    assert col_matrix.shape == (m, n)
+    history = []
+
+    avg_row = np.ones(m) / m
+    avg_col = np.ones(n) / n
+    last_row = avg_row.copy()
+    last_col = avg_col.copy()
+
+    row_count = 0
+    col_count = 0
+
     for i in range(num_iters):
-        if (i % 2 == 0):
-            if naive:
-                row_strategy = np.argmax(row_matrix @ last_col_strategy)
-                last_row_strategy = row_strategy
-            else:
-                row_strategy = np.argmax(row_matrix @ avg_col_strategy)
-                avg_row_strategy = (avg_row_strategy * (i//2) + row_strategy) / (i//2 + 1)
+        if i % 2 == 0:
+            # row moves
+            target_col = last_col if naive else avg_col
+            br_idx = np.argmax(row_matrix @ target_col)
+            row_pure = np.zeros(m); row_pure[br_idx] = 1
+            last_row = row_pure
+            row_count += 1
+            avg_row = (avg_row * (row_count - 1) + row_pure) / row_count
         else:
-            if naive:
-                col_strategy = np.argmax(last_row_strategy @ col_matrix)
-                last_col_strategy = col_strategy
-            else:
-                col_strategy = np.argmax(avg_row_strategy @ col_matrix)
-                avg_col_strategy = (avg_col_strategy * (i//2) + col_strategy) / (i//2 + 1)
-    return [(avg_row_strategy, avg_col_strategy)]
+            # column moves
+            target_row = last_row if naive else avg_row
+            br_idx = np.argmax(target_row @ col_matrix)
+            col_pure = np.zeros(n); col_pure[br_idx] = 1
+            last_col = col_pure
+            col_count += 1
+            avg_col = (avg_col * (col_count - 1) + col_pure) / col_count
+
+        history.append((avg_row.copy(), avg_col.copy()))
+    return history
 
 
 def plot_exploitability(
