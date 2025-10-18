@@ -59,24 +59,7 @@ def verify_support(
     np.ndarray | None
         The opponent's strategy, if it exists, otherwise `None`
     """
-    num_row_support = len(row_support)
-    num_col_support = len(col_support)
-    submatrix = matrix[np.ix_(row_support, col_support)]
-    A_eq = np.zeros((num_row_support + 1, num_col_support + 1))
-    b_eq = np.zeros(num_row_support + 1)
-    b_eq[-1] = 1.0
-
-    A_eq[:-1, :-1] = submatrix
-    A_eq[:num_row_support,-1] = -1.0
-    A_eq[-1,:num_col_support] = 1.0
-    print(A_eq)
-    c = np.zeros(num_col_support + 1)
-    epsilon = 1e-9
-    bounds = [(epsilon, None)] * num_col_support + [(None, None)]
-    result = linprog(c=c,A_eq = A_eq,b_eq = b_eq,bounds = bounds,method='highs')
-    if result.success:
-        return result.x[:-1]
-    return None
+    raise NotImplementedError
 
 
 def support_enumeration(
@@ -106,16 +89,3 @@ def main() -> None:
 
 if __name__ == '__main__':
     main()
-
-
-p1_matrix = np.array([
-    [0., 0., -10.],
-    [1., -10., -10.],
-    [-10., -10., -10.]
-])
-row_support_fail = np.array([0, 1])
-col_support_fail = np.array([0, 1])
-
-# --- Call your function ---
-# We use the ROW player's matrix to find the COLUMN player's strategy
-result = verify_support(p1_matrix, row_support_fail, col_support_fail)
