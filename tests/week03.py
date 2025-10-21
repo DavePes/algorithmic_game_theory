@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import numpy as np
-
+import week01
 
 def compute_deltas(
     row_matrix: np.ndarray,
@@ -119,34 +119,32 @@ def fictitious_play(
     assert col_matrix.shape == (m, n)
     history = []
 
-    avg_row = np.ones(m) / m
-    avg_col = np.ones(n) / n
-    last_row = avg_row.copy()
-    last_col = avg_col.copy()
+    avg_row = np.ones(m,dtype=np.float64) / m
+    avg_col = np.ones(n, dtype=np.float64) / n
+    row_action = week01.calculate_best_response_against_col(row_matrix, avg_col)
+    col_action = week01.calculate_best_response_against_row(col_matrix, avg_row)
+    avg_row = row_action.copy()
+    avg_col = col_action.copy()
+    last_col = col_action
+    last_row = row_action
+    history.append((avg_row.copy(), avg_col.copy()))
+    for i in range(2, num_iters + 1):
+        # row moves
+        target_col = last_col if naive else avg_col
+        row_action = week01.calculate_best_response_against_col(row_matrix, target_col)
+        target_row = last_row if naive else avg_row
+        col_action = week01.calculate_best_response_against_row(col_matrix, target_row)
 
-    row_count = 0
-    col_count = 0
+        avg_row += (row_action - avg_row) / i
+        avg_col += (col_action - avg_col) / i
 
-    for i in range(num_iters):
-        if i % 2 == 0:
-            # row moves
-            target_col = last_col if naive else avg_col
-            br_idx = np.argmax(row_matrix @ target_col)
-            row_pure = np.zeros(m); row_pure[br_idx] = 1
-            last_row = row_pure
-            row_count += 1
-            avg_row = (avg_row * (row_count - 1) + row_pure) / row_count
-        else:
-            # column moves
-            target_row = last_row if naive else avg_row
-            br_idx = np.argmax(target_row @ col_matrix)
-            col_pure = np.zeros(n); col_pure[br_idx] = 1
-            last_col = col_pure
-            col_count += 1
-            avg_col = (avg_col * (col_count - 1) + col_pure) / col_count
-
+        last_row = row_action
+        last_col = col_action
         history.append((avg_row.copy(), avg_col.copy()))
     return history
+
+    
+
 
 
 def plot_exploitability(
