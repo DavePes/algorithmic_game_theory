@@ -16,9 +16,29 @@ def find_nash_equilibrium(row_matrix: np.ndarray) -> tuple[np.ndarray, np.ndarra
     tuple[np.ndarray, np.ndarray]
         A strategy profile that forms a Nash equilibrium
     """
-    return week02.support_enumeration(row_matrix,-row_matrix.T)
+    def find_strategy(matrix: np.ndarray) -> tuple[np.ndarray, float]:
+        # Objective: minimize -u
+        m, n = matrix.shape
+        c = np.zeros(m + 1)
+        c[-1] = -1.0
+        A_ub = np.ones((n, m + 1))
+        A_ub[:,:-1] = -matrix.T
+        b_ub = np.zeros(n)
 
+        A_eq = np.ones((1, m + 1))
+        A_eq[0,-1] = 0.0
 
+        b_eq = np.array([1.0])
+        bounds = [(0, None)] * m + [(None, None)]
+        result = linprog(c=c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+        p = result.x[:-1]
+        u = result.x[-1]
+        return result.x[:-1], result.x[-1]
+
+    row_strategy, game_value_row = find_strategy(row_matrix)
+    col_strategy, game_value_col = find_strategy(-row_matrix.T)
+    assert abs(game_value_row + game_value_col) < 1e-8, "Game values do not match!"
+    return row_strategy, col_strategy
 
 def find_correlated_equilibrium(row_matrix: np.ndarray, col_matrix: np.ndarray) -> np.ndarray:
     """Find a correlated equilibrium in a normal-form game using linear programming.
@@ -41,7 +61,7 @@ def find_correlated_equilibrium(row_matrix: np.ndarray, col_matrix: np.ndarray) 
     """
     num_row_actions, num_col_actions = row_matrix.shape
     ## Row inequalities first row
-    A_row = np.zeros(((num_row_actions-1)*num_row_actions,num_col_actions*num_row_actions))
+    A_row = np.zeros(((num_row_actions-1)*num_row_actions,num_col_actions*num_row_actions),dtype=np.float64)
     for ai in range(num_row_actions):
         for prime_a in range(num_row_actions):
             if ai == prime_a:
@@ -50,7 +70,7 @@ def find_correlated_equilibrium(row_matrix: np.ndarray, col_matrix: np.ndarray) 
             col_index = ai*num_col_actions
             A_row[row_index, col_index:(col_index+num_col_actions)] = row_matrix[ai,:] - row_matrix[prime_a,:]
     ## Column inequalities second row
-    A_col = np.zeros(((num_col_actions-1)*num_col_actions,num_col_actions*num_row_actions))
+    A_col = np.zeros(((num_col_actions-1)*num_col_actions,num_col_actions*num_row_actions),dtype=np.float64)
     for aj in range(num_col_actions):
         for prime_a in range(num_col_actions):
             if aj == prime_a:
@@ -61,14 +81,14 @@ def find_correlated_equilibrium(row_matrix: np.ndarray, col_matrix: np.ndarray) 
     
     # Inequalities in <= form
     A_ub = -np.vstack([A_row, A_col])   # flip sign to get <= 0
-    b_ub = np.zeros(A_ub.shape[0])
+    b_ub = np.zeros(A_ub.shape[0], dtype=np.float64)
 
     # Probability simplex
-    A_eq = np.ones((1, num_row_actions*num_col_actions))
-    b_eq = np.array([1.0])
+    A_eq = np.ones((1, num_row_actions*num_col_actions), dtype=np.float64)
+    b_eq = np.array([1.0], dtype=np.float64)
 
     # Variables: p_{ij} flattened row-major
-    c = np.zeros(num_row_actions*num_col_actions)
+    c = np.zeros(num_row_actions*num_col_actions, dtype=np.float64)
     bounds = [(0.0, None)] * (num_row_actions*num_col_actions)
 
     res = linprog(c=c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
