@@ -41,7 +41,7 @@ def compute_nash_conv(
     col_matrix: np.ndarray,
     row_strategy: np.ndarray,
     col_strategy: np.ndarray,
-) -> float:
+) -> np.float64:
     """Compute the NashConv value of a given strategy profile.
 
     Parameters
@@ -57,7 +57,7 @@ def compute_nash_conv(
 
     Returns
     -------
-    float
+    np.float64
         The NashConv value of the given strategy profile
     """
     deltas = compute_deltas(row_matrix, col_matrix, row_strategy, col_strategy)
@@ -69,7 +69,7 @@ def compute_exploitability(
     col_matrix: np.ndarray,
     row_strategy: np.ndarray,
     col_strategy: np.ndarray,
-) -> float:
+) -> np.float64:
     """Compute the exploitability of a given strategy profile.
 
     Parameters
@@ -85,7 +85,7 @@ def compute_exploitability(
 
     Returns
     -------
-    float
+    np.float64
         The exploitability value of the given strategy profile
     """
     return 0.5 * compute_nash_conv(
@@ -96,7 +96,11 @@ def compute_exploitability(
 def fictitious_play(
     row_matrix: np.ndarray, col_matrix: np.ndarray, num_iters: int, naive: bool
 ) -> list[tuple[np.ndarray, np.ndarray]]:
-    """Run Fictitious Play for a given number of epochs.
+    """Run Fictitious Play for a given number of iterations.
+
+    Although any averaging method is valid, the reference solution updates the
+    average strategy vectors using a moving average. Therefore, it is recommended
+    to use the same averaging method to avoid numerical discrepancies during testing.
 
     Parameters
     ----------
@@ -142,7 +146,7 @@ def plot_exploitability(
     col_matrix: np.ndarray,
     strategies: list[tuple[np.ndarray, np.ndarray]],
     label: str,
-) -> list[float]:
+) -> list[np.float64]:
     """Compute and plot the exploitability of a sequence of strategy profiles.
 
     Parameters
@@ -158,7 +162,7 @@ def plot_exploitability(
 
     Returns
     -------
-    list[float]
+    list[np.float64]
         A sequence of exploitability values, one for each strategy profile
     """
     exploitabilities = []

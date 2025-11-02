@@ -107,7 +107,7 @@ def calculate_best_response_against_col(
 
 def evaluate_row_against_best_response(
     row_matrix: np.ndarray, col_matrix: np.ndarray, row_strategy: np.ndarray
-) -> np.float32:
+) -> np.float64:
     """Compute the utility of the row player when playing against a best response strategy.
 
     Parameters
@@ -121,7 +121,7 @@ def evaluate_row_against_best_response(
 
     Returns
     -------
-    np.float32
+    np.float64
         The expected utility of the row player
     """
     col_strategy = np.zeros(col_matrix.shape[1])
@@ -132,7 +132,7 @@ def evaluate_row_against_best_response(
 
 def evaluate_col_against_best_response(
     row_matrix: np.ndarray, col_matrix: np.ndarray, col_strategy: np.ndarray
-) -> np.float32:
+) -> np.float64:
     """Compute the utility of the column player when playing against a best response strategy.
 
     Parameters
@@ -146,7 +146,7 @@ def evaluate_col_against_best_response(
 
     Returns
     -------
-    np.float32
+    np.float64
         The expected utility of the column player
     """
     row_strategy = np.zeros(row_matrix.shape[0])
