@@ -174,7 +174,7 @@ def find_strictly_dominated_actions(matrix: np.ndarray) -> np.ndarray:
             if a != b and all(matrix[a, :] < matrix[b, :]):
                 dominated_actions.append(a)
                 break
-    return np.array(dominated_actions)
+    return np.array(dominated_actions,dtype=np.int64)
 
 
 

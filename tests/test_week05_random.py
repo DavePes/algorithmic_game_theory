@@ -72,3 +72,4 @@ def test_double_oracle(
         },
         f'{request.node.originalname}{request.node.callspec.indices["zero_sum_data_stream"]}',
     )
+#retcode = pytest.main([__file__, "-v"])
