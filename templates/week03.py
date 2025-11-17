@@ -145,8 +145,6 @@ def fictitious_play(
 
     
 
-
-
 def plot_exploitability(
     row_matrix: np.ndarray,
     col_matrix: np.ndarray,
