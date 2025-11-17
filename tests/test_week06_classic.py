@@ -70,3 +70,4 @@ def test_regret_minimization(
         },
         f'{request.node.originalname}{request.node.callspec.indices["general_sum_data_stream"]}',
     )
+#retcode = pytest.main([__file__, "-v"])

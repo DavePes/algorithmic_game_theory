@@ -10,7 +10,7 @@ from pytest import FixtureRequest
 from pytest_regressions.ndarrays_regression import NDArraysRegressionFixture
 
 import week03
-import week06
+import week06 as week06
 from utils import (
     cache_data_stream_per_function,
     parameterize_random_general_sum_tests,
