@@ -16,7 +16,17 @@ pretty much impossible.
 """
 
 import numpy as np
+class nodes():
+    def __init__(self, state, history):
+        self.state = state
+        self.history = history
 
+class groupped_nodes():
+    def __init__(self, state,history):
+        self.states = [state]
+        self.history = history
+        self.state = state
+        
 
 def traverse_tree(env, state):
     """Build a full extensive-form game tree for a given game."""
