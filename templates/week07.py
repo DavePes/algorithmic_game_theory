@@ -28,11 +28,11 @@ class groupped_nodes():
         self.state = state
         
 
-def traverse_tree(env, state):
+def traverse_tree(env, state,history=[]):
     """Build a full extensive-form game tree for a given game."""
     for action in state.legal_action_mask:
         if (action != False):
-            raise NotImplementedError
+            pass
 
 
 def evaluate(*args, **kwargs):
