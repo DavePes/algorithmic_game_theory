@@ -18,10 +18,11 @@ pretty much impossible.
 import numpy as np
 
 
-def traverse_tree(*args, **kwargs):
+def traverse_tree(env, state):
     """Build a full extensive-form game tree for a given game."""
-
-    raise NotImplementedError
+    for action in state.legal_action_mask:
+        if (action != False):
+            raise NotImplementedError
 
 
 def evaluate(*args, **kwargs):
@@ -60,7 +61,7 @@ def main() -> None:
 
     # Initialize the environment with a random seed
     state = env.init(0)
-
+    game_tree = traverse_tree(env, state)
     while not (state.terminated or state.truncated):
         if state.is_chance_node:
             uniform_strategy = state.legal_action_mask / np.sum(state.legal_action_mask)
