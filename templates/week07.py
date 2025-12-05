@@ -16,10 +16,12 @@ pretty much impossible.
 """
 
 import numpy as np
+import copy
 class nodes():
     def __init__(self, state, history):
         self.state = state
         self.history = history
+        self.children = {}
 
 class groupped_nodes():
     def __init__(self, state,history):
@@ -27,13 +29,26 @@ class groupped_nodes():
         self.history = history
         self.state = state
         
-
-def traverse_tree(env, state,history=[]):
+groupped_nodes_dict = {}
+def traverse_tree(env, state,num_players,observed_moves=[]):
     """Build a full extensive-form game tree for a given game."""
-    for action in state.legal_action_mask:
-        if (action != False):
-            pass
-
+    if (len(observed_moves) > 0 and not state.is_chance_node):
+        player_id = (len(observed_moves)-1) % num_players
+        
+        player_moves = [f"player_{player_id}",*observed_moves[player_id::num_players]]
+        
+        if tuple(player_moves) not in groupped_nodes_dict:
+            groupped_nodes_dict[tuple(player_moves)] = groupped_nodes(state, observed_moves)
+        else:
+            groupped_nodes_dict[tuple(player_moves)].states.append(state)
+    if state.terminated or state.truncated:
+        return nodes(state, observed_moves)
+    node = nodes(state, observed_moves)
+    for action,legal_action in enumerate(state.legal_action_mask):
+        if legal_action == True:    
+            env_copy = copy.deepcopy(env)
+            node.children[action] = traverse_tree(env_copy, env_copy.step(state, action), num_players, observed_moves + [action])        
+    return node
 
 def evaluate(*args, **kwargs):
     """Compute the expected utility of each player in an extensive-form game."""
@@ -71,7 +86,7 @@ def main() -> None:
 
     # Initialize the environment with a random seed
     state = env.init(0)
-    game_tree = traverse_tree(env, state)
+    game_tree = traverse_tree(env, state,2)
     while not (state.terminated or state.truncated):
         if state.is_chance_node:
             uniform_strategy = state.legal_action_mask / np.sum(state.legal_action_mask)

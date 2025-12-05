@@ -89,7 +89,7 @@ def find_correlated_equilibrium(row_matrix: np.ndarray, col_matrix: np.ndarray) 
 
     # Variables: p_{ij} flattened row-major
     c = np.zeros(num_row_actions*num_col_actions, dtype=np.float64)
-    bounds = [(0.0, None)] * (num_row_actions*num_col_actions)
+    bounds = [(0.0, 1)] * (num_row_actions*num_col_actions)
 
     res = linprog(c=c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
     if res.success:
