@@ -3,3 +3,5 @@ matplotlibrc
 
 .venv
 solutions
+__pycache__
+.pyc
