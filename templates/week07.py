@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import numpy as np
+import copy
 
 """
 Extensive-form games assignments.
@@ -15,8 +17,6 @@ in this block. Unfortunately, this freedom makes automated testing
 pretty much impossible.
 """
 
-import numpy as np
-import copy
 class nodes():
     def __init__(self, state, history):
         self.state = state
@@ -28,26 +28,39 @@ class groupped_nodes():
         self.states = [state]
         self.history = history
         self.state = state
+        self.total_value = {}
         
-groupped_nodes_dict = {}
-def traverse_tree(env, state,num_players,observed_moves=[]):
-    """Build a full extensive-form game tree for a given game."""
-    if (len(observed_moves) > 0 and not state.is_chance_node):
-        player_id = (len(observed_moves)-1) % num_players
-        
-        player_moves = [f"player_{player_id}",*observed_moves[player_id::num_players]]
-        
-        if tuple(player_moves) not in groupped_nodes_dict:
-            groupped_nodes_dict[tuple(player_moves)] = groupped_nodes(state, observed_moves)
+
+def get_history_of_last_player(observed_moves,num_players,observing_player):
+    observed_moves_of_last_player = []
+    for i, h in enumerate(observed_moves):
+        if h[0] == -1 and i % num_players == observing_player or h[0] != -1:
+            observed_moves_of_last_player.append(h)
         else:
-            groupped_nodes_dict[tuple(player_moves)].states.append(state)
+            observed_moves_of_last_player.append((-1, -1))
+    return observed_moves_of_last_player
+
+
+def traverse_tree(env, state,num_players,groupped_nodes_dict,observed_moves=[]):
+    """Build a full extensive-form game tree for a given game."""
     if state.terminated or state.truncated:
         return nodes(state, observed_moves)
+    
+    if (len(observed_moves) > 0 and not state.is_chance_node):
+        
+        observed_moves_of_last_player = get_history_of_last_player(observed_moves,num_players,state.current_player.item())
+        
+        if tuple(observed_moves_of_last_player) not in groupped_nodes_dict:
+            groupped_nodes_dict[tuple(observed_moves_of_last_player)] = groupped_nodes(state, observed_moves_of_last_player)
+        else:
+            groupped_nodes_dict[tuple(observed_moves_of_last_player)].states.append(state)
     node = nodes(state, observed_moves)
     for action,legal_action in enumerate(state.legal_action_mask):
         if legal_action == True:    
             env_copy = copy.deepcopy(env)
-            node.children[action] = traverse_tree(env_copy, env_copy.step(state, action), num_players, observed_moves + [action])        
+            actor = -1 if state.is_chance_node else state.current_player.item()
+
+            node.children[action] = traverse_tree(env_copy, env_copy.step(state, action), num_players, groupped_nodes_dict, observed_moves + [(actor, action)])        
     return node
 
 def evaluate(*args, **kwargs):
@@ -56,11 +69,30 @@ def evaluate(*args, **kwargs):
     raise NotImplementedError
 
 
-def compute_best_response(*args, **kwargs):
+def compute_best_response(node,opponent_strategy,num_players,player_id,groupped_nodes,probability,observed_moves = []):
     """Compute a best response strategy for a given player against a fixed opponent's strategy."""
+    state = node.state
 
-    raise NotImplementedError
+    if state.terminated or state.truncated:
+        return state.rewards[player_id]
+    
+    expected_utility = {}
+    for action,legal_action in enumerate(state.legal_action_mask):
+        if legal_action == True:
+            actor = -1 if state.is_chance_node else state.current_player.item()
+            observed_moves_of_last_player = get_history_of_last_player(observed_moves,num_players,state.current_player.item())
 
+            if state.is_chance_node:
+                expected_utility[action] = state.chance_strategy[action] * compute_best_response(node.children[action],opponent_strategy,num_players,player_id,groupped_nodes,probability * state.chance_strategy[action],observed_moves + [(actor, action)])
+            elif state.current_player.item() == player_id:
+                expected_utility[action] = compute_best_response(node.children[action],opponent_strategy,num_players,player_id,groupped_nodes,probability,observed_moves + [(actor, action)])
+                groupped_nodes[tuple(observed_moves_of_last_player)].total_value[action] = groupped_nodes[tuple(observed_moves_of_last_player)].total_value.get(action, 0) + expected_utility[action] * probability
+            elif state.current_player.item() != player_id:
+                opponent_prob = opponent_strategy[observed_moves_of_last_player][action]
+                expected_utility[action] = opponent_prob * compute_best_response(node.children[action],opponent_strategy,num_players,player_id,groupped_nodes,probability*opponent_prob,observed_moves + [(actor, action)])
+    if state.current_player.item() == player_id:
+        return max(expected_utility.values())
+    return sum(expected_utility.values())
 
 def compute_average_strategy(*args, **kwargs):
     """Compute a weighted average of a pair of behavioural strategies for a given player."""
@@ -86,7 +118,9 @@ def main() -> None:
 
     # Initialize the environment with a random seed
     state = env.init(0)
-    game_tree = traverse_tree(env, state,2)
+    groupped_nodes_dict = {}
+    #game_tree = traverse_tree(env, state, 2, groupped_nodes_dict)
+
     while not (state.terminated or state.truncated):
         if state.is_chance_node:
             uniform_strategy = state.legal_action_mask / np.sum(state.legal_action_mask)
