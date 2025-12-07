@@ -29,8 +29,9 @@ class groupped_nodes():
         self.history = history
         self.state = state
         self.total_value = {}
-        
+        self.player_id = state.current_player.item() if not state.is_chance_node else -1
 
+    
 def get_history_of_last_player(observed_moves,num_players,observing_player):
     observed_moves_of_last_player = []
     for i, h in enumerate(observed_moves):
@@ -63,48 +64,122 @@ def traverse_tree(env, state,num_players,groupped_nodes_dict,observed_moves=[]):
             node.children[action] = traverse_tree(env_copy, env_copy.step(state, action), num_players, groupped_nodes_dict, observed_moves + [(actor, action)])        
     return node
 
-def evaluate(*args, **kwargs):
+def evaluate(node, strategy_profile, num_players, observed_moves = []):
     """Compute the expected utility of each player in an extensive-form game."""
-
-    raise NotImplementedError
-
-
-def compute_best_response(node,opponent_strategy,num_players,player_id,groupped_nodes,probability,observed_moves = []):
-    """Compute a best response strategy for a given player against a fixed opponent's strategy."""
     state = node.state
-
+    utilities = {player_id: 0 for player_id in range(num_players)}
     if state.terminated or state.truncated:
-        return state.rewards[player_id]
-    
-    expected_utility = {}
+        return state.rewards
     for action,legal_action in enumerate(state.legal_action_mask):
         if legal_action == True:
             actor = -1 if state.is_chance_node else state.current_player.item()
-            observed_moves_of_last_player = get_history_of_last_player(observed_moves,num_players,state.current_player.item())
-
+            observed_moves_of_last_player = tuple(get_history_of_last_player(observed_moves,num_players,state.current_player.item()))
+            prob = 0
             if state.is_chance_node:
-                expected_utility[action] = state.chance_strategy[action] * compute_best_response(node.children[action],opponent_strategy,num_players,player_id,groupped_nodes,probability * state.chance_strategy[action],observed_moves + [(actor, action)])
-            elif state.current_player.item() == player_id:
-                expected_utility[action] = compute_best_response(node.children[action],opponent_strategy,num_players,player_id,groupped_nodes,probability,observed_moves + [(actor, action)])
-                groupped_nodes[tuple(observed_moves_of_last_player)].total_value[action] = groupped_nodes[tuple(observed_moves_of_last_player)].total_value.get(action, 0) + expected_utility[action] * probability
-            elif state.current_player.item() != player_id:
-                opponent_prob = opponent_strategy[observed_moves_of_last_player][action]
-                expected_utility[action] = opponent_prob * compute_best_response(node.children[action],opponent_strategy,num_players,player_id,groupped_nodes,probability*opponent_prob,observed_moves + [(actor, action)])
-    if state.current_player.item() == player_id:
-        return max(expected_utility.values())
-    return sum(expected_utility.values())
+                prob = state.chance_strategy[action]
+            else:
+                prob = strategy_profile[observed_moves_of_last_player][action] 
 
-def compute_average_strategy(*args, **kwargs):
+            if prob >= 0:
+                child_utilities = evaluate(node.children[action], strategy_profile, num_players, observed_moves + [(actor, action)])
+                for player_id in range(num_players):
+                    utilities[player_id] += prob * child_utilities[player_id]
+    return utilities
+
+def reset_groupped_nodes_values(groupped_nodes_dict):
+    for key in groupped_nodes_dict:
+        groupped_nodes_dict[key].total_value = {}
+def compute_best_response(node,strategy_profile,num_players,player_id,groupped_nodes,probability,observed_moves = []):
+    """Compute a best response strategy for a given player against a fixed opponent's strategy."""
+    def populate_groupped_nodes(node,strategy_profile,num_players,player_id,probability,observed_moves = []):
+        state = node.state
+
+        if state.terminated or state.truncated:
+            return state.rewards[player_id]
+        expected_utility = {}
+        for action,legal_action in enumerate(state.legal_action_mask):
+            if legal_action == True:
+                actor = -1 if state.is_chance_node else state.current_player.item()
+                observed_moves_of_last_player = tuple(get_history_of_last_player(observed_moves,num_players,state.current_player.item()))
+
+                if state.is_chance_node:
+                    expected_utility[action] = state.chance_strategy[action] * compute_best_response(node.children[action],strategy_profile,num_players,player_id,groupped_nodes,probability * state.chance_strategy[action],observed_moves + [(actor, action)])
+                elif state.current_player.item() == player_id:
+                    expected_utility[action] = compute_best_response(node.children[action],strategy_profile,num_players,player_id,groupped_nodes,probability,observed_moves + [(actor, action)])
+                    groupped_nodes[observed_moves_of_last_player].total_value[action] = groupped_nodes[observed_moves_of_last_player].total_value.get(action, 0) + expected_utility[action] * probability
+                elif state.current_player.item() != player_id:
+                    opponent_prob = strategy_profile[observed_moves_of_last_player][action]
+                    expected_utility[action] = opponent_prob * compute_best_response(node.children[action],strategy_profile,num_players,player_id,groupped_nodes,probability*opponent_prob,observed_moves + [(actor, action)])
+        if state.current_player.item() == player_id:
+            return max(expected_utility.values())
+        return sum(expected_utility.values())
+    reset_groupped_nodes_values(groupped_nodes)
+    populate_groupped_nodes(node,strategy_profile,num_players,player_id,probability,observed_moves)
+
+    best_response = {}
+    for groupped_node in groupped_nodes.keys():
+        if groupped_nodes[groupped_node].player_id != player_id:
+            best_response[groupped_node] = strategy_profile[groupped_node]
+            continue
+        best_action = -1
+        best_value = -float('inf')
+        best_response[groupped_node] = {}
+        for action, value in groupped_nodes[groupped_node].total_value.items():
+            best_response[groupped_node][action] = 0.0
+            if value > best_value:
+                best_value = value
+                best_action = action
+        best_response[groupped_node][best_action] = 1.0
+    return best_response
+
+        
+
+
+def compute_average_strategy(node,strategy_1,strategy_2,weight_1,weight_2,num_players,player_id,prob_strategy_1,prob_strategy_2,new_strategy,observed_moves = []):
     """Compute a weighted average of a pair of behavioural strategies for a given player."""
+    def compute_strategy(node,strategy_1,strategy_2,weight_1,weight_2,num_players,player_id,prob_strategy_1,prob_strategy_2,new_strategy,observed_moves = []):
+    
+        state = node.state
 
-    raise NotImplementedError
+        if state.terminated or state.truncated:
+            return
+        for action,legal_action in enumerate(state.legal_action_mask):
+            if legal_action == True:
+                actor = -1 if state.is_chance_node else state.current_player.item()
+                observed_moves_of_last_player = tuple(get_history_of_last_player(observed_moves,num_players,state.current_player.item()))
+                if state.is_chance_node:
+                    compute_strategy(node.children[action],strategy_1,strategy_2,weight_1,weight_2,num_players,player_id,prob_strategy_1 * state.chance_strategy[action],prob_strategy_2 * state.chance_strategy[action],new_strategy,observed_moves + [(actor, action)])
+                elif state.current_player.item() == player_id:
+                    if new_strategy.get(observed_moves_of_last_player) is None:
+                        new_strategy[observed_moves_of_last_player] = {}
+                    prob_1 = strategy_1[observed_moves_of_last_player][action]
+                    prob_2 = strategy_2[observed_moves_of_last_player][action]
+                    new_prob = weight_1 * prob_strategy_1 * prob_1 + weight_2 * prob_strategy_2 * prob_2
+                    new_strategy[observed_moves_of_last_player][action] = new_strategy[observed_moves_of_last_player].get(action, 0) + new_prob
+                    compute_strategy(node.children[action],strategy_1,strategy_2,weight_1,weight_2,num_players,player_id,prob_strategy_1*prob_1,prob_strategy_2*prob_2,new_strategy,observed_moves + [(actor, action)])
+                elif state.current_player.item() != player_id:
+                    compute_strategy(node.children[action],strategy_1,strategy_2,weight_1,weight_2,num_players,player_id,prob_strategy_1,prob_strategy_2,new_strategy,observed_moves + [(actor, action)])
+    compute_strategy(node,strategy_1,strategy_2,weight_1,weight_2,num_players,player_id,prob_strategy_1,prob_strategy_2,new_strategy,observed_moves)
+    ## Normalize the new strategy
+    for key in new_strategy:
+        total = sum(new_strategy[key].values())
+        if total == 0:
+            continue
+        for action in new_strategy[key]:
+            new_strategy[key][action] /= total
+    
 
 
-def compute_exploitability(*args, **kwargs):
+def compute_exploitability(node,groupped_nodes,strategy_profile, num_players):
     """Compute and plot the exploitability of a sequence of strategy profiles."""
-
-    raise NotImplementedError
-
+    ## compute deltas
+    utilities = evaluate(node, strategy_profile, num_players)
+    best_utilities = {}
+    for player_id in range(num_players):
+        best_response = compute_best_response(node, strategy_profile, num_players, player_id, groupped_nodes, 1.0)
+        best_utilities[player_id] = evaluate(node,best_response, num_players)[player_id]
+    deltas = [best_utilities[player_id] - utilities[player_id] for player_id in range(num_players)]
+    return sum(deltas)*0.5
 
 def main() -> None:
     from kuhn_poker import KuhnPokerNumpy as KuhnPoker
@@ -119,7 +194,8 @@ def main() -> None:
     # Initialize the environment with a random seed
     state = env.init(0)
     groupped_nodes_dict = {}
-    #game_tree = traverse_tree(env, state, 2, groupped_nodes_dict)
+    game_tree = traverse_tree(env, state, 2, groupped_nodes_dict)
+
 
     while not (state.terminated or state.truncated):
         if state.is_chance_node:
