@@ -99,7 +99,7 @@ def compute_best_response(node,strategy_profile,num_players,player_id,informatio
         expected_utility = {}
         for action,legal_action in enumerate(state.legal_action_mask):
             if legal_action == True:
-                observed_moves_of_last_player = node.information_set.history
+                observed_moves_of_last_player = None if state.is_chance_node or len(node.information_set.history) == 0 else node.information_set.history
                 if state.is_chance_node:
                     expected_utility[action] = state.chance_strategy[action] * best_response_for_each_set(node.children[action],strategy_profile,num_players,player_id,information_set,probability * state.chance_strategy[action])
                 elif state.current_player.item() == player_id:
@@ -143,7 +143,7 @@ def compute_average_strategy(node,strategy_1,strategy_2,weight_1,weight_2,num_pl
             return
         for action,legal_action in enumerate(state.legal_action_mask):
             if legal_action == True:
-                observed_moves_of_last_player = node.information_set.history
+                observed_moves_of_last_player = None if state.is_chance_node or len(node.information_set.history) == 0 else node.information_set.history
                 if state.is_chance_node:
                     compute_strategy(node.children[action],strategy_1,strategy_2,weight_1,weight_2,num_players,player_id,prob_strategy_1 * state.chance_strategy[action],prob_strategy_2 * state.chance_strategy[action],new_strategy)
                 elif state.current_player.item() == player_id:
