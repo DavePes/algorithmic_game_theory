@@ -47,8 +47,7 @@ def traverse_tree(env, state,num_players,information_set_dict,observed_moves=[])
     if state.terminated or state.truncated:
         return nodes(state, observed_moves)
     
-    if (len(observed_moves) > 0 and not state.is_chance_node):
-        
+    if not state.is_chance_node:
         observed_moves_of_last_player = get_history_of_last_player(observed_moves,num_players,state.current_player.item())
         
         if tuple(observed_moves_of_last_player) not in information_set_dict:
@@ -77,7 +76,7 @@ def evaluate(node, strategy_profile, num_players):
             if state.is_chance_node:
                 prob = state.chance_strategy[action]
             else:
-                prob = strategy_profile[node.information_set.history][action] 
+                prob = strategy_profile[state.current_player.item()][node.information_set.history][action] 
 
             if prob >= 0:
                 child_utilities = evaluate(node.children[action], strategy_profile, num_players)
@@ -89,11 +88,11 @@ def reset_information_set_values(information_set_dict):
     for key in information_set_dict:
         information_set_dict[key].total_value = {}
 
-def compute_best_response(node,strategy_profile,num_players,player_id,information_set,probability):
+def compute_best_response(node,strategy_profile,player_id,information_set,probability):
     """Compute a best response strategy for a given player against a fixed opponent's strategy."""
-    def best_response_for_each_set(node,strategy_profile,num_players,player_id,probability):
+    def best_response_for_each_set(node,strategy_profile,player_id,information_set,probability):
         state = node.state
-
+        current_player = state.current_player.item()
         if state.terminated or state.truncated:
             return state.rewards[player_id]
         expected_utility = {}
@@ -101,24 +100,23 @@ def compute_best_response(node,strategy_profile,num_players,player_id,informatio
             if legal_action == True:
                 observed_moves_of_last_player = None if state.is_chance_node or len(node.information_set.history) == 0 else node.information_set.history
                 if state.is_chance_node:
-                    expected_utility[action] = state.chance_strategy[action] * best_response_for_each_set(node.children[action],strategy_profile,num_players,player_id,information_set,probability * state.chance_strategy[action])
-                elif state.current_player.item() == player_id:
-                    expected_utility[action] = best_response_for_each_set(node.children[action],strategy_profile,num_players,player_id,information_set,probability)
+                    expected_utility[action] = state.chance_strategy[action] * best_response_for_each_set(node.children[action],strategy_profile,player_id,information_set,probability * state.chance_strategy[action])
+                elif current_player == player_id:
+                    expected_utility[action] = best_response_for_each_set(node.children[action],strategy_profile,player_id,information_set,probability)
                     information_set[observed_moves_of_last_player].total_value[action] = information_set[observed_moves_of_last_player].total_value.get(action, 0) + expected_utility[action] * probability
-                elif state.current_player.item() != player_id:
-                    opponent_prob = strategy_profile[observed_moves_of_last_player][action]
-                    expected_utility[action] = opponent_prob * best_response_for_each_set(node.children[action],strategy_profile,num_players,player_id,information_set,probability*opponent_prob)
-        if state.current_player.item() == player_id:
+                elif current_player != player_id:
+                    opponent_prob = strategy_profile[current_player][observed_moves_of_last_player][action]
+                    expected_utility[action] = opponent_prob * best_response_for_each_set(node.children[action],strategy_profile,player_id,information_set,probability*opponent_prob)
+        if current_player == player_id:
             return max(expected_utility.values())
         return sum(expected_utility.values())
         
     reset_information_set_values(information_set)
-    best_response_for_each_set(node,strategy_profile,num_players,player_id,probability)
+    best_response_for_each_set(node,strategy_profile,player_id,information_set,probability)
 
     best_response = {}
     for groupped_node in information_set.keys():
         if information_set[groupped_node].player_id != player_id:
-            best_response[groupped_node] = strategy_profile[groupped_node]
             continue
         best_action = -1
         best_value = -float('inf')
@@ -134,9 +132,9 @@ def compute_best_response(node,strategy_profile,num_players,player_id,informatio
         
 
 
-def compute_average_strategy(node,strategy_1,strategy_2,weight_1,weight_2,num_players,player_id,prob_strategy_1,prob_strategy_2,new_strategy):
+def compute_average_strategy(node,strategy_1,strategy_2,weight_1,weight_2,player_id,prob_strategy_1,prob_strategy_2,new_strategy):
     """Compute a weighted average of a pair of behavioural strategies for a given player."""
-    def compute_strategy(node,strategy_1,strategy_2,weight_1,weight_2,num_players,player_id,prob_strategy_1,prob_strategy_2,new_strategy):
+    def compute_strategy(node,strategy_1,strategy_2,weight_1,weight_2,player_id,prob_strategy_1,prob_strategy_2,new_strategy):
     
         state = node.state
         if state.terminated or state.truncated:
@@ -145,18 +143,22 @@ def compute_average_strategy(node,strategy_1,strategy_2,weight_1,weight_2,num_pl
             if legal_action == True:
                 observed_moves_of_last_player = None if state.is_chance_node or len(node.information_set.history) == 0 else node.information_set.history
                 if state.is_chance_node:
-                    compute_strategy(node.children[action],strategy_1,strategy_2,weight_1,weight_2,num_players,player_id,prob_strategy_1 * state.chance_strategy[action],prob_strategy_2 * state.chance_strategy[action],new_strategy)
+                    # Propagate the chance probability equally to both strategy paths
+                    compute_strategy(node.children[action],strategy_1,strategy_2,weight_1,weight_2,player_id,prob_strategy_1 * state.chance_strategy[action],prob_strategy_2 * state.chance_strategy[action],new_strategy)
                 elif state.current_player.item() == player_id:
                     if new_strategy.get(observed_moves_of_last_player) is None:
                         new_strategy[observed_moves_of_last_player] = {}
+                    # Retrieve local probabilities from both strategies
                     prob_1 = strategy_1[observed_moves_of_last_player][action]
                     prob_2 = strategy_2[observed_moves_of_last_player][action]
+                    #Weight the local probability by the reach probability
+                    # This accounts for the fact that one strategy might visit this node much more often than the other.
                     new_prob = weight_1 * prob_strategy_1 * prob_1 + weight_2 * prob_strategy_2 * prob_2
                     new_strategy[observed_moves_of_last_player][action] = new_strategy[observed_moves_of_last_player].get(action, 0) + new_prob
-                    compute_strategy(node.children[action],strategy_1,strategy_2,weight_1,weight_2,num_players,player_id,prob_strategy_1*prob_1,prob_strategy_2*prob_2,new_strategy)
+                    compute_strategy(node.children[action],strategy_1,strategy_2,weight_1,weight_2,player_id,prob_strategy_1*prob_1,prob_strategy_2*prob_2,new_strategy)
                 elif state.current_player.item() != player_id:
-                    compute_strategy(node.children[action],strategy_1,strategy_2,weight_1,weight_2,num_players,player_id,prob_strategy_1,prob_strategy_2,new_strategy)
-    compute_strategy(node,strategy_1,strategy_2,weight_1,weight_2,num_players,player_id,prob_strategy_1,prob_strategy_2,new_strategy)
+                    compute_strategy(node.children[action],strategy_1,strategy_2,weight_1,weight_2,player_id,prob_strategy_1,prob_strategy_2,new_strategy)
+    compute_strategy(node,strategy_1,strategy_2,weight_1,weight_2,player_id,prob_strategy_1,prob_strategy_2,new_strategy)
     ## Normalize the new strategy
     for key in new_strategy:
         total = sum(new_strategy[key].values())
@@ -173,11 +175,43 @@ def compute_exploitability(node,information_set,strategy_profile, num_players):
     utilities = evaluate(node, strategy_profile, num_players)
     best_utilities = {}
     for player_id in range(num_players):
-        best_response = compute_best_response(node, strategy_profile, num_players, player_id, information_set, 1.0)
+        best_response = compute_best_response(node, strategy_profile, player_id, information_set, 1.0)
         best_utilities[player_id] = evaluate(node,best_response, num_players)[player_id]
     deltas = [best_utilities[player_id] - utilities[player_id] for player_id in range(num_players)]
     return sum(deltas)*0.5
 
+def uniform_strategy(start_node, player_id,information_set_dict):
+    """Compute the uniform random strategy for a given player."""
+    uniform_strat = {}
+    for key in information_set_dict:
+        if information_set_dict[key].player_id != player_id:
+            continue
+        uniform_strat[key] = {}
+        legal_actions = [action for action, legal in enumerate(information_set_dict[key].states[0].legal_action_mask) if legal]
+        prob = 1.0 / len(legal_actions)
+        for action in legal_actions:
+            uniform_strat[key][action] = prob
+    return uniform_strat
+
+def fictious_play(start_node, num_iters, information_set_dict):
+    history = []
+
+    avg_strategy_1 = uniform_strategy(start_node, 0, information_set_dict)
+    avg_strategy_2 = uniform_strategy(start_node, 1, information_set_dict)
+    best_response_1 = compute_best_response(start_node, avg_strategy_2, 0, information_set_dict, 1.0)
+    best_response_2 = compute_best_response(start_node, avg_strategy_1, 1, information_set_dict, 1.0)
+    avg_strategy_1 = best_response_1
+    avg_strategy_2 = best_response_2
+    history.append((copy.deepcopy(avg_strategy_1), copy.deepcopy(avg_strategy_2)))
+    for i in range(2, num_iters + 1):
+        # row moves
+        best_response_1 = compute_best_response(start_node, avg_strategy_2, 0, information_set_dict, 1.0)
+        best_response_2 = compute_best_response(start_node, avg_strategy_1, 1, information_set_dict, 1.0)
+        avg_strategy_1 = compute_average_strategy(start_node, avg_strategy_1, best_response_1, i - 1, i,0, 1.0, 1.0, avg_strategy_1)
+        avg_strategy_2 = compute_average_strategy(start_node, avg_strategy_2, best_response_2, i - 1, i,1, 1.0, 1.0, avg_strategy_2)
+
+        history.append((copy.deepcopy(avg_strategy_1), copy.deepcopy(avg_strategy_2)))
+    return history
 def main() -> None:
     from kuhn_poker import KuhnPokerNumpy as KuhnPoker
 
@@ -192,7 +226,7 @@ def main() -> None:
     state = env.init(0)
     information_set_dict = {}
     game_tree = traverse_tree(env, state, 2, information_set_dict)
-
+    fictious_play_history = fictious_play(game_tree, 10, information_set_dict)
 
     while not (state.terminated or state.truncated):
         if state.is_chance_node:
