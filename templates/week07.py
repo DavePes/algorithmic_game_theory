@@ -16,6 +16,7 @@ the most suitable representations is an important part of assignments
 in this block. Unfortunately, this freedom makes automated testing
 pretty much impossible.
 """
+global_history = []
 
 class nodes():
     def __init__(self, state, history,information_set=None):
@@ -30,33 +31,50 @@ class information_set():
         self.state = state
         self.total_value = {}
         self.player_id = state.current_player.item() if not state.is_chance_node else -1
+        self.mapped_history = None
 
     
 def get_history_of_last_player(observed_moves,num_players,observing_player):
     observed_moves_of_last_player = []
     for i, h in enumerate(observed_moves):
-        if h[0] == -1 and i % num_players == observing_player or h[0] != -1:
+        if i % num_players == observing_player or h[0] != -1:
             observed_moves_of_last_player.append(h)
         else:
             observed_moves_of_last_player.append((-1, -1))
     return observed_moves_of_last_player
 
-def map_history_to_actions(observed_moves,cards):
+def map_history(observed_moves,player_id):
+    ## only works for kuhn_poker
+    ## it is like this
+    # cards 0,1,2
+    # J,Q,K
+    # or
+    # check bet
+    # fold call
     chance_nodes = ["J","Q","K"]
     has_bet = False
-    check_bet = ["Check","Bet"]
-    fold_call = ["Fold","Call"]
+    check_bet = ["Bet","Check"]
+    fold_call = ["Call","Fold"]
     mapped_history = []
+    mapped_action = ""
     for i, h in enumerate(observed_moves):
+        # h[0] = -1 is chance node
         if h[0] == -1:
-            mapped_history.append(chance_nodes.cards[i])
-            chance_nodes.remove(cards[i])
+            mapped_action = chance_nodes[h[1]]
         elif h[1] != -1:
-            if has_bet:
-                mapped_history.append("Call")
+            if has_bet == False:
+                mapped_action = check_bet[h[1]]
+                if check_bet[h[1]] == "Bet":
+                    has_bet = True
             else:
-                mapped_history.append("Bet")
-                has_bet = True
+                mapped_action = fold_call[h[1]]
+        if i % 2 == player_id or h[0] != -1:
+            mapped_history.append(mapped_action)
+        else:
+            mapped_history.append("")
+    global_history.append(tuple(mapped_history))
+    return tuple(mapped_history)
+            
         
 def traverse_tree(env, state,num_players,information_set_dict,observed_moves=[],map_kuhn_poker=False):
     """Build a full extensive-form game tree for a given game."""
@@ -65,9 +83,9 @@ def traverse_tree(env, state,num_players,information_set_dict,observed_moves=[],
     
     if not state.is_chance_node:
         observed_moves_of_last_player = get_history_of_last_player(observed_moves,num_players,state.current_player.item())
-        
         if tuple(observed_moves_of_last_player) not in information_set_dict:
             information_set_dict[tuple(observed_moves_of_last_player)] = information_set(state, tuple(observed_moves_of_last_player))
+            information_set_dict[tuple(observed_moves_of_last_player)].mapped_history = map_history(observed_moves, state.current_player.item()) if map_kuhn_poker else None
         else:
             information_set_dict[tuple(observed_moves_of_last_player)].states.append(state)
     information_set_of_last_player = None if state.is_chance_node else information_set_dict[tuple(get_history_of_last_player(observed_moves,num_players,state.current_player.item()))]
@@ -94,10 +112,9 @@ def evaluate(node, strategy_profile, num_players):
             else:
                 prob = strategy_profile[state.current_player.item()][node.information_set.history][action] 
 
-            if prob >= 0:
-                child_utilities = evaluate(node.children[action], strategy_profile, num_players)
-                for player_id in range(num_players):
-                    utilities[player_id] += prob * child_utilities[player_id]
+            child_utilities = evaluate(node.children[action], strategy_profile, num_players)
+            for player_id in range(num_players):
+                utilities[player_id] += prob * child_utilities[player_id]
     return utilities
 
 def reset_information_set_values(information_set_dict):
@@ -172,6 +189,11 @@ def compute_average_strategy(node,strategy_1,strategy_2,weight_1,weight_2,player
                     # This accounts for the fact that one strategy might visit this node much more often than the other.
                     new_prob = weight_1 * prob_1 * prob_1_action + weight_2 * prob_2 * prob_2_action
                     averaged_strategy[observed_moves_of_last_player][action] = averaged_strategy[observed_moves_of_last_player].get(action, 0) + new_prob
+                    ## DEBUG PRINT
+                    # if observed_moves_of_last_player == ((-1, 1), (-1, -1)):  #[('Q', ''), ('Bet', 'Check')]
+                    #     print(f"Action: {action}, prob_1_action = {prob_1_action}, prob_2_action = {prob_2_action}, weight_1 = {weight_1}, weight_2 = {weight_2}, prob_1 = {prob_1}, prob_2 = {prob_2}")
+                    #     print(f"New prob for action {action} at info set {new_prob}")
+                    #     x =  5 
                     compute_strategy(node.children[action],strategy_1,strategy_2,weight_1,weight_2,player_id,prob_1*prob_1_action,prob_2*prob_2_action,averaged_strategy)
                 elif state.current_player.item() != player_id:
                     compute_strategy(node.children[action],strategy_1,strategy_2,weight_1,weight_2,player_id,prob_1,prob_2,averaged_strategy)
@@ -191,12 +213,22 @@ def compute_exploitability(node,information_set,strategy_profile, num_players):
     """Compute and plot the exploitability of a sequence of strategy profiles."""
     ## compute deltas
     utilities = evaluate(node, strategy_profile, num_players)
-    best_utilities = {}
+    deltas = []
     for player_id in range(num_players):
-        best_response = compute_best_response(node, strategy_profile, player_id, information_set, 1.0)
-        best_utilities[player_id] = evaluate(node,best_response, num_players)[player_id]
-    deltas = [best_utilities[player_id] - utilities[player_id] for player_id in range(num_players)]
-    return sum(deltas)*0.5
+        # 1. Get the Best Response strategy dictionary for the current player
+        best_response_strat = compute_best_response(node, strategy_profile, player_id, information_set, 1.0)
+        
+        # 2. Create a full profile: Current player uses BR, opponents use the original strategy_profile
+        # We merge them (best_response_strat overwrites the entry for player_id)
+        br_profile = {**strategy_profile, **best_response_strat}
+        
+        # 3. Evaluate the new profile to get the utility of the Best Response
+        br_utility = evaluate(node, br_profile, num_players)[player_id]
+        
+        # 4. Calculate the gain (delta)
+        deltas.append(br_utility - utilities[player_id])
+        
+    return sum(deltas) * 0.5
 
 def uniform_strategy(player_id,information_set_dict):
     """Compute the uniform random strategy for a given player."""
@@ -211,105 +243,65 @@ def uniform_strategy(player_id,information_set_dict):
             uniform_strat[key][action] = prob
     return uniform_strat
 
-# --- Formatting Helpers ---
-def format_kuhn_history(history_tuple):
-    """Converts internal history tuple to readable ('J', '', 'Check') format."""
-    cards = {0: 'J', 1: 'Q', 2: 'K', -1: ''}
-    formatted = []
-    has_bet = False
-    
-    for item in history_tuple:
-        if item[0] == -1: # Chance outcome
-            formatted.append(cards.get(item[1], ''))
-        else: # Action
-            action_id = item[1]
-            # FIX: Map 0 -> Bet/Call, 1 -> Check/Fold
-            if action_id == 0: 
-                formatted.append('Call' if has_bet else 'Bet')
-                has_bet = True
-            elif action_id == 1: 
-                formatted.append('Fold' if has_bet else 'Check')
-                
-    return tuple(formatted)
 
-def print_strategy_step(iteration, label, player_id, strategy_dict):
-    """Prints strategy in the specific requested format."""
-    sorted_histories = sorted(strategy_dict.keys(), key=lambda x: (len(x), x))
-    
-    for hist in sorted_histories:
-        readable_hist = format_kuhn_history(hist)
-        actions = strategy_dict[hist]
-        
-        # Check if 'Bet' occurred previously to name Call/Fold correctly
-        has_bet = False
-        for item in hist:
-            if item[0] != -1 and item[1] == 0: # 0 was Bet/Call
-                has_bet = True
-
-        action_strs = []
-        for action_id, prob in actions.items():
-            act_name = ""
-            # FIX: Map 0 -> Bet/Call, 1 -> Check/Fold
-            if action_id == 0:
-                act_name = 'Call' if has_bet else 'Bet'
-            else:
-                act_name = 'Fold' if has_bet else 'Check'
-            action_strs.append((act_name, prob))
-        
-        # Sort alphabetically for consistent output
-        action_strs.sort(key=lambda x: x[0])
-        
-        content = ", ".join([f"{name}: {prob:.5f}" for name, prob in action_strs])
-        print(f"Iter {iteration}: {label} of P{player_id+1} at {readable_hist}: {content}")
-
+def print_stats(iteration, avg_strategy_1, avg_strategy_2, best_response_1, best_response_2, game_tree, information_set_dict):
+    mapped_histories= [
+    [('J', ''), ("Bet", "Check")],
+    [('Q', ''), ("Bet", "Check")],
+    [('K', ''), ("Bet", "Check")],
+    [('J', '', 'Check', 'Bet'), ("Call", "Fold")],
+    [('Q', '', 'Check', 'Bet'), ("Call", "Fold")],
+    [('K', '', 'Check', 'Bet'), ("Call", "Fold")],
+    [('', 'J', 'Check'), ("Bet", "Check")],
+    [('', 'J', 'Bet'), ("Call", "Fold")],
+    [('', 'Q', 'Check'), ("Bet", "Check")],
+    [('', 'Q', 'Bet'), ("Call", "Fold")],
+    [('', 'K', 'Check'), ("Bet", "Check")],
+    [('', 'K', 'Bet'), ("Call", "Fold")],
+]
+    curr_profile = {**avg_strategy_1, **avg_strategy_2}
+    utils = evaluate(game_tree, curr_profile, 2)
+    print(f"Iter {iteration}: Utility of avg. strategies: {utils[0]:.5f}, {utils[1]:.5f}")
+    for i,strat in enumerate([avg_strategy_1, avg_strategy_2, best_response_1, best_response_2]):
+        for mapped_history in mapped_histories:
+            for key in strat[i % 2]:
+                if information_set_dict[key].mapped_history == mapped_history[0]:
+                    prob_action_1 = strat[i % 2][key][0]
+                    prob_action_2 = strat[i % 2][key][1]
+                    if i < 2:
+                        print(f"Iter {iteration}: Avg. strategy of P{(i % 2) + 1} at {mapped_history[0]}: {mapped_history[1][0]}: {prob_action_1:.5f}, {mapped_history[1][1]}: {prob_action_2:.5f}")
+                    if i >=2:
+                        print(f"Iter {iteration}: BR of P{(i % 2) + 1} against P{((i + 1) % 2) + 1}'s avg. strategy at {mapped_history[0]}: {mapped_history[1][0]}: {prob_action_1:.5f}, {mapped_history[1][1]}: {prob_action_2:.5f}")
+    print("")
 def fictious_play(start_node, num_iters, information_set_dict):
     history = []
     
-    # Initialization: Create Uniform Strategies
+    # Initialization
     avg_strategy_1 = {0: uniform_strategy(0, information_set_dict)}
     avg_strategy_2 = {1: uniform_strategy(1, information_set_dict)}
     
-    # 1. Calculate Initial Best Responses against Uniform
+    # Initial Best Responses
     best_response_1 = compute_best_response(start_node, avg_strategy_2, 0, information_set_dict, 1.0)
     best_response_2 = compute_best_response(start_node, avg_strategy_1, 1, information_set_dict, 1.0)
     
-    # FIX: Print Iter 1 stats based on Uniform strategies BEFORE updating
-    curr_profile = {**avg_strategy_1, **avg_strategy_2}
-    utils = evaluate(start_node, curr_profile, 2)
-    print(f"Iter 1: Utility of avg. strategies: {utils[0]:.5f}, {utils[1]:.5f}")
-    
-    print_strategy_step(1, "Avg. strategy", 0, avg_strategy_1[0])
-    print_strategy_step(1, "Avg. strategy", 1, avg_strategy_2[1])
-    print_strategy_step(1, "BR of P1 against P2's avg. strategy", 0, best_response_1[0])
-    print_strategy_step(1, "BR of P2 against P1's avg. strategy", 1, best_response_2[1])
-    print("") 
-
-    # FIX: Compute average using weights (1, 1) for the transition to Iter 2
+    print_stats(1, avg_strategy_1, avg_strategy_2, best_response_1, best_response_2, start_node,information_set_dict)
     avg_strategy_1 = compute_average_strategy(start_node, avg_strategy_1, best_response_1, 1, 1, 0, 1.0, 1.0)
     avg_strategy_2 = compute_average_strategy(start_node, avg_strategy_2, best_response_2, 1, 1, 1, 1.0, 1.0)
-
     history.append((copy.deepcopy(avg_strategy_1), copy.deepcopy(avg_strategy_2)))
     
-    # Loop starts from 2
+    # Loop for remaining iterations
     for i in range(2, num_iters + 1):
+
+
         best_response_1 = compute_best_response(start_node, avg_strategy_2, 0, information_set_dict, 1.0)
         best_response_2 = compute_best_response(start_node, avg_strategy_1, 1, information_set_dict, 1.0)
         
-        # Print stats for current iteration
-        curr_profile = {**avg_strategy_1, **avg_strategy_2}
-        utils = evaluate(start_node, curr_profile, 2)
-        print(f"Iter {i}: Utility of avg. strategies: {utils[0]:.5f}, {utils[1]:.5f}")
-        
-        print_strategy_step(i, "Avg. strategy", 0, avg_strategy_1[0])
-        print_strategy_step(i, "Avg. strategy", 1, avg_strategy_2[1])
-        print_strategy_step(i, "BR of P1 against P2's avg. strategy", 0, best_response_1[0])
-        print_strategy_step(i, "BR of P2 against P1's avg. strategy", 1, best_response_2[1])
-        print("")
 
-        # FIX: Update averages with weights Old=(i-1), New=1
+        # Print Stats
+        print_stats(i, avg_strategy_1, avg_strategy_2, best_response_1, best_response_2, start_node,information_set_dict)
+
         avg_strategy_1 = compute_average_strategy(start_node, avg_strategy_1, best_response_1, i, 1, 0, 1.0, 1.0)
         avg_strategy_2 = compute_average_strategy(start_node, avg_strategy_2, best_response_2, i, 1, 1, 1.0, 1.0)
-
         history.append((copy.deepcopy(avg_strategy_1), copy.deepcopy(avg_strategy_2)))
 
     return history
@@ -327,9 +319,25 @@ def main() -> None:
     # Initialize the environment with a random seed
     state = env.init(0)
     information_set_dict = {}
-    game_tree = traverse_tree(env, state, 2, information_set_dict,[],["J", "Q", "K"])
-    fictious_play_history = fictious_play(game_tree, 6, information_set_dict)
+    game_tree = traverse_tree(env, state, 2, information_set_dict,[],True)
+    # global_history.sort(reverse=True)
+    # for gh in global_history:
+    #     print(gh)
+    fictious_play_history = fictious_play(game_tree, 200,information_set_dict)
 
+    print("-" * 60)
+    print(f"{'Iteration':<15} | {'Exploitability':<20}")
+    print("-" * 60)
+
+    # Iterate through history to calculate and print exploitability
+    for i, (strat_1, strat_2) in enumerate(fictious_play_history):
+        # Merge the two players' strategies into a single profile
+        full_strategy_profile = {**strat_1, **strat_2}
+        
+        expl = compute_exploitability(game_tree, information_set_dict, full_strategy_profile, 2)
+        print(f"{i + 1:<15} | {expl:.6f}")
+
+    print("-" * 60)
     while not (state.terminated or state.truncated):
         if state.is_chance_node:
             uniform_strategy = state.legal_action_mask / np.sum(state.legal_action_mask)
